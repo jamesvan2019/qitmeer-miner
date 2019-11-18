@@ -1,1 +1,1 @@
-int test_add();
+int test_cuda();

@@ -1,14 +1,15 @@
-package main
+package main 
 
-//#cgo CFLAGS: -I.
-//#cgo LDFLAGS: -L. -ltest
-//#cgo LDFLAGS: -lcudart
+import "fmt" 
+
+//#cgo CFLAGS: -I. 
+//#cgo LDFLAGS: -L. -ltest 
+//#cgo LDFLAGS: -lcudart 
 //#include "test.h"
-import "C"
-import (
-	`fmt`
-)
+import "C" 
 
-func main()  {
-	fmt.Println(C.test_add())
+
+func main() { 
+    fmt.Printf("Invoking cuda library...\n") 
+    fmt.Println("Done ", C.test_cuda()) 
 }

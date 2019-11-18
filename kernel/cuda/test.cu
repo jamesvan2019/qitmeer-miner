@@ -211,7 +211,7 @@ __global__ void SeedB(const uint2 * __restrict__ source, ulonglong4 * __restrict
       }
       counters[col] = newCount;
     }
-    __syncthreads(); 
+    __syncthreads();
   }
   uint2 zero = make_uint2(0, 0);
   for (int col = lid; col < NX; col += dim) {
@@ -314,10 +314,9 @@ __global__ void Tail(const uint2 *source, uint2 *destination, const u32 *srcIdx,
   for (int i = lid; i < myEdges; i += dim)
     destination[destIdx + i] = source[group * maxIn + i];
 }
-
-#define checkCudaErrors_V(ans) ({if (gpuAssert((ans), __FILE__, __LINE__) != cudaSuccess) return;})
-#define checkCudaErrors_N(ans) ({if (gpuAssert((ans), __FILE__, __LINE__) != cudaSuccess) return NULL;})
-#define checkCudaErrors(ans) ({int retval = gpuAssert((ans), __FILE__, __LINE__); if (retval != cudaSuccess) return retval;})
+#define checkCudaErrors_V(ans) (gpuAssert((ans), __FILE__, __LINE__) != cudaSuccess)
+#define checkCudaErrors_N(ans) (gpuAssert((ans), __FILE__, __LINE__) != cudaSuccess)
+#define checkCudaErrors(ans) (gpuAssert((ans), __FILE__, __LINE__) != cudaSuccess)
 
 inline int gpuAssert(cudaError_t code, const char *file, int line, bool abort=true) {
   int device_id;
@@ -408,17 +407,17 @@ struct edgetrimmer {
   bool initsuccess = false;
 
   edgetrimmer(const trimparams _tp) : tp(_tp) {
-    checkCudaErrors_V(cudaMalloc((void**)&dt, sizeof(edgetrimmer)));
-    checkCudaErrors_V(cudaMalloc((void**)&uvnodes, PROOFSIZE * 2 * sizeof(u32)));
-    checkCudaErrors_V(cudaMalloc((void**)&dipkeys, sizeof(siphash_keys)));
+    if checkCudaErrors_V(cudaMalloc((void**)&dt, sizeof(edgetrimmer))) return;
+    if checkCudaErrors_V(cudaMalloc((void**)&uvnodes, PROOFSIZE * 2 * sizeof(u32))) return;
+    if checkCudaErrors_V(cudaMalloc((void**)&dipkeys, sizeof(siphash_keys))) return;
     for (int i = 0; i < 1+NB; i++) {
-      checkCudaErrors_V(cudaMalloc((void**)&indexesE[i], indexesSize));
+      if checkCudaErrors_V(cudaMalloc((void**)&indexesE[i], indexesSize)) return;
     }
     sizeA = ROW_EDGES_A * NX * sizeof(uint2);
     sizeB = ROW_EDGES_B * NX * sizeof(uint2);
     const size_t bufferSize = sizeA + sizeB / NB;
     assert(bufferSize >= sizeB + sizeB / NB / 2); // ensure enough space for Round 1
-    checkCudaErrors_V(cudaMalloc((void**)&bufferA, bufferSize));
+    if checkCudaErrors_V(cudaMalloc((void**)&bufferA, bufferSize)) return;
     bufferAB = bufferA + sizeB / NB;
     bufferB  = bufferA + bufferSize - sizeB;
     assert(bufferA + sizeA == bufferB + sizeB * (NB-1) / NB); // ensure alignment of overlap
@@ -429,33 +428,35 @@ struct edgetrimmer {
     return (sizeA+sizeB/NB) + (1+NB) * indexesSize + sizeof(siphash_keys) + PROOFSIZE * 2 * sizeof(u32) + sizeof(edgetrimmer);
   }
   ~edgetrimmer() {
-    checkCudaErrors_V(cudaFree(bufferA));
+    if checkCudaErrors_V(cudaFree(bufferA)) return;
     for (int i = 0; i < 1+NB; i++) {
-      checkCudaErrors_V(cudaFree(indexesE[i]));
+      if checkCudaErrors_V(cudaFree(indexesE[i])) return;
     }
-    checkCudaErrors_V(cudaFree(dipkeys));
-    checkCudaErrors_V(cudaFree(uvnodes));
-    checkCudaErrors_V(cudaFree(dt));
+    if checkCudaErrors_V(cudaFree(dipkeys)) return;
+    if checkCudaErrors_V(cudaFree(uvnodes)) return;
+    if checkCudaErrors_V(cudaFree(dt)) return;
     cudaDeviceReset();
   }
   u32 trim() {
     cudaEvent_t start, stop;
-    checkCudaErrors(cudaEventCreate(&start)); checkCudaErrors(cudaEventCreate(&stop));
+    if checkCudaErrors(cudaEventCreate(&start)) return false;
+    if checkCudaErrors(cudaEventCreate(&stop)) return false;
     cudaMemcpy(dipkeys, &sipkeys, sizeof(sipkeys), cudaMemcpyHostToDevice);
-  
+
     cudaDeviceSynchronize();
     float durationA, durationB;
     cudaEventRecord(start, NULL);
-  
+
     cudaMemset(indexesE[1], 0, indexesSize);
 
     SeedA<EDGES_A><<<tp.genA.blocks, tp.genA.tpb>>>(*dipkeys, (ulonglong4*)bufferAB, indexesE[1]);
-  
-    checkCudaErrors(cudaDeviceSynchronize()); cudaEventRecord(stop, NULL);
+
+    if checkCudaErrors(cudaDeviceSynchronize()) return false;
+    cudaEventRecord(stop, NULL);
     cudaEventSynchronize(stop); cudaEventElapsedTime(&durationA, start, stop);
     if (abort) return false;
     cudaEventRecord(start, NULL);
-  
+
     cudaMemset(indexesE[0], 0, indexesSize);
 
     u32 qA = sizeA/NA;
@@ -465,12 +466,12 @@ struct edgetrimmer {
       if (abort) return false;
     }
 
-    checkCudaErrors(cudaDeviceSynchronize()); cudaEventRecord(stop, NULL);
+    if checkCudaErrors(cudaDeviceSynchronize()) return false; cudaEventRecord(stop, NULL);
     cudaEventSynchronize(stop); cudaEventElapsedTime(&durationB, start, stop);
-    checkCudaErrors(cudaEventDestroy(start)); checkCudaErrors(cudaEventDestroy(stop));
+    if checkCudaErrors(cudaEventDestroy(start)) return false; if checkCudaErrors(cudaEventDestroy(stop)) return false;
     print_log("Seeding completed in %.0f + %.0f ms\n", durationA, durationB);
     if (abort) return false;
-  
+
     for (u32 i = 0; i < NB; i++) cudaMemset(indexesE[1+i], 0, indexesSize);
 
     qA = sizeA/NB;
@@ -495,9 +496,9 @@ struct edgetrimmer {
 
     Round<1, EDGES_A/4, EDGES_B/4><<<tp.trim.blocks, tp.trim.tpb>>>(3, (const uint2 *)bufferB, (uint2 *)bufferA, indexesE[1], indexesE[0]); // to .117
     if (abort) return false;
-  
+
     cudaDeviceSynchronize();
-  
+
     for (int round = 4; round < tp.ntrims; round += 2) {
       cudaMemset(indexesE[1], 0, indexesSize);
       Round<1, EDGES_B/4, EDGES_B/4><<<tp.trim.blocks, tp.trim.tpb>>>(round, (const uint2 *)bufferA, (uint2 *)bufferB, indexesE[0], indexesE[1]);
@@ -506,10 +507,10 @@ struct edgetrimmer {
       Round<1, EDGES_B/4, EDGES_B/4><<<tp.trim.blocks, tp.trim.tpb>>>(round+1, (const uint2 *)bufferB, (uint2 *)bufferA, indexesE[1], indexesE[0]);
       if (abort) return false;
     }
-    
+
     cudaMemset(indexesE[1], 0, indexesSize);
     cudaDeviceSynchronize();
-  
+
     Tail<EDGES_B/4><<<tp.tail.blocks, tp.tail.tpb>>>((const uint2 *)bufferA, (uint2 *)bufferB, indexesE[0], indexesE[1]);
     cudaMemcpy(&nedges, indexesE[1], sizeof(u32), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
@@ -556,7 +557,7 @@ struct solver_ctx {
       cudaMemset(trimmer.indexesE[1], 0, trimmer.indexesSize);
       Recovery<<<trimmer.tp.recover.blocks, trimmer.tp.recover.tpb>>>(*trimmer.dipkeys, (ulonglong4*)trimmer.bufferA, (int *)trimmer.indexesE[1]);
       cudaMemcpy(&sols[sols.size()-PROOFSIZE], trimmer.indexesE[1], PROOFSIZE * sizeof(u32), cudaMemcpyDeviceToHost);
-      checkCudaErrors(cudaDeviceSynchronize());
+      if checkCudaErrors(cudaDeviceSynchronize()) return false;
       qsort(&sols[sols.size()-PROOFSIZE], PROOFSIZE, sizeof(u32), cg.nonce_cmp);
     }
     return 0;
@@ -575,7 +576,7 @@ struct solver_ctx {
       print_log("OOPS; losing %d edges beyond MAXEDGES=%d\n", nedges-MAXEDGES, MAXEDGES);
       nedges = MAXEDGES;
     }
-    cudaMemcpy(edges, trimmer.bufferB, sizeof(uint2[nedges]), cudaMemcpyDeviceToHost);
+	cudaMemcpy(edges, trimmer.bufferB, sizeof(uint2) * nedges, cudaMemcpyDeviceToHost);
     time1 = timestamp(); timems  = (time1 - time0) / 1000000;
     time0 = timestamp();
     findcycles(edges, nedges);
@@ -589,7 +590,7 @@ struct solver_ctx {
   }
 };
 
-#include <unistd.h>
+#include <sys/unistd.h>
 
 // arbitrary length of header hashed into siphash key
 #define HEADERLEN 80
@@ -646,7 +647,7 @@ CALL_CONVENTION int run_solver(SolverCtx* ctx,
         solutions->edge_bits = EDGEBITS;
         solutions->num_sols++;
         solutions->sols[sumnsols+s].nonce = nonce + r;
-        for (u32 i = 0; i < PROOFSIZE; i++) 
+        for (u32 i = 0; i < PROOFSIZE; i++)
           solutions->sols[sumnsols+s].proof[i] = (u64) prf[i];
       }
       int pow_rc = verify(prf, ctx->trimmer.sipkeys);
@@ -684,7 +685,7 @@ CALL_CONVENTION SolverCtx* create_solver_ctx(SolverParams* params) {
   tp.recover.tpb = params->recovertpb;
 
   cudaDeviceProp prop;
-  checkCudaErrors_N(cudaGetDeviceProperties(&prop, params->device));
+  if checkCudaErrors_N(cudaGetDeviceProperties(&prop, params->device)) return NULL;
 
   assert(tp.genA.tpb <= prop.maxThreadsPerBlock);
   assert(tp.genB.tpb <= prop.maxThreadsPerBlock);
@@ -700,7 +701,7 @@ CALL_CONVENTION SolverCtx* create_solver_ctx(SolverParams* params) {
 
   cudaSetDevice(params->device);
   if (!params->cpuload)
-    checkCudaErrors_N(cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync));
+    if checkCudaErrors_N(cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync)) return NULL;
 
   SolverCtx* ctx = new SolverCtx(tp, params->mutate_nonce);
 
@@ -728,48 +729,50 @@ CALL_CONVENTION void fill_default_params(SolverParams* params) {
   params->recovertpb = tp.recover.tpb;
   params->cpuload = false;
 }
+
 extern "C" {
-    int test_add() {
+        __declspec(dllexport)
+	int test_cuda(){
       trimparams tp;
-      u32 nonce = 0;
-      u32 range = 1;
-      u32 device = 0;
-      char header[HEADERLEN];
-      u32 len;
-      int c;
+        u32 nonce = 0;
+        u32 range = 1;
+        u32 device = 0;
+        char header[HEADERLEN];
+        u32 len;
+        int c;
 
-      // set defaults
-      SolverParams params;
-      fill_default_params(&params);
+        // set defaults
+        SolverParams params;
+        fill_default_params(&params);
 
-      memset(header, 0, sizeof(header));
-        return 3;
-      int nDevices;
-      checkCudaErrors(cudaGetDeviceCount(&nDevices));
-        return 2;
-      assert(device < nDevices);
-      cudaDeviceProp prop;
-      checkCudaErrors(cudaGetDeviceProperties(&prop, device));
-      u64 dbytes = prop.totalGlobalMem;
-      int dunit;
-      for (dunit=0; dbytes >= 102040; dbytes>>=10,dunit++) ;
-      print_log("%s with %d%cB @ %d bits x %dMHz\n", prop.name, (u32)dbytes, " KMGT"[dunit], prop.memoryBusWidth, prop.memoryClockRate/1000);
-      // cudaSetDevice(device);
+        memset(header, 0, sizeof(header));
 
-      print_log("Looking for %d-cycle on cuckaroo%d(\"%s\",%d", PROOFSIZE, EDGEBITS, header, nonce);
-      if (range > 1)
-        print_log("-%d", nonce+range-1);
-      print_log(") with 50%% edges, %d*%d buckets, %d trims, and %d thread blocks.\n", NX, NY, params.ntrims, NX);
 
-      SolverCtx* ctx = create_solver_ctx(&params);
+        int nDevices;
+        if checkCudaErrors(cudaGetDeviceCount(&nDevices)) return 3;
+        assert(device < nDevices);
+        cudaDeviceProp prop;
+        if checkCudaErrors(cudaGetDeviceProperties(&prop, device)) return 3;
+        u64 dbytes = prop.totalGlobalMem;
+        int dunit;
+        for (dunit=0; dbytes >= 102040; dbytes>>=10,dunit++) ;
+        print_log("%s with %d%cB @ %d bits x %dMHz\n", prop.name, (u32)dbytes, " KMGT"[dunit], prop.memoryBusWidth, prop.memoryClockRate/1000);
+        // cudaSetDevice(device);
 
-      u64 bytes = ctx->trimmer.globalbytes();
-      int unit;
-      for (unit=0; bytes >= 102400; bytes>>=10,unit++) ;
-      print_log("Using %d%cB of global memory.\n", (u32)bytes, " KMGT"[unit]);
+        print_log("Looking for %d-cycle on cuckaroo%d(\"%s\",%d", PROOFSIZE, EDGEBITS, header, nonce);
+        if (range > 1)
+          print_log("-%d", nonce+range-1);
+        print_log(") with 50%% edges, %d*%d buckets, %d trims, and %d thread blocks.\n", NX, NY, params.ntrims, NX);
 
-      run_solver(ctx, header, sizeof(header), nonce, range, NULL, NULL);
+        SolverCtx* ctx = create_solver_ctx(&params);
 
-      return 0;
-    }
+        u64 bytes = ctx->trimmer.globalbytes();
+        int unit;
+        for (unit=0; bytes >= 102400; bytes>>=10,unit++) ;
+        print_log("Using %d%cB of global memory.\n", (u32)bytes, " KMGT"[unit]);
+
+        run_solver(ctx, header, sizeof(header), nonce, range, NULL, NULL);
+
+        return 0;
+      }
 }

@@ -70,7 +70,7 @@ public:
     MAXNODES = maxnodes;
     MAXSOLS = maxsols;
     adjlist = new (bytes) word_t[2*MAXNODES]; // index into links array
-    links   = new (bytes += sizeof(word_t[2*MAXNODES])) link[2*MAXEDGES];
+    links   = new (bytes += sizeof(word_t)*2*MAXNODES) link[2*MAXEDGES];
     compressu = compressv = 0;
     sharedmem = true;
     sols    = new  proof[MAXSOLS];
@@ -82,8 +82,8 @@ public:
     MAXNODES = maxnodes;
     MAXSOLS = maxsols;
     adjlist = new (bytes) word_t[2*MAXNODES]; // index into links array
-    links   = new (bytes += sizeof(word_t[2*MAXNODES])) link[2*MAXEDGES];
-    compressu = new compressor<word_t>(EDGEBITS, compressbits, bytes += sizeof(link[2*MAXEDGES]));
+    links   = new (bytes += sizeof(word_t)*2*MAXNODES) link[2*MAXEDGES];
+    compressu = new compressor<word_t>(EDGEBITS, compressbits, bytes += sizeof(link)*2*MAXEDGES);
     compressv = new compressor<word_t>(EDGEBITS, compressbits, bytes + compressu->bytes());
     sharedmem = true;
     sols    = new  proof[MAXSOLS];
@@ -92,11 +92,11 @@ public:
 
   // total size of new-operated data, excludes sols and visited bitmap of MAXEDGES bits
   uint64_t bytes() {
-    return sizeof(word_t[2*MAXNODES]) + sizeof(link[2*MAXEDGES]) + (compressu ? 2 * compressu->bytes() : 0);
+    return sizeof(word_t)*2*MAXNODES + sizeof(link)*2*MAXEDGES + (compressu ? 2 * compressu->bytes() : 0);
   }
 
   void reset() {
-    memset(adjlist, (char)NIL, sizeof(word_t[2*MAXNODES]));
+    memset(adjlist, (char)NIL, sizeof(word_t)*2*MAXNODES);
     if (compressu) {
       compressu->reset();
       compressv->reset();

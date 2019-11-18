@@ -47,11 +47,11 @@ public:
   }
 
   uint64_t bytes() {
-    return sizeof(word_t[SIZE2]);
+    return sizeof(word_t)*SIZE2;
   }
 
   void reset() {
-    memset(nodes, (char)NIL, sizeof(word_t[SIZE2]));
+	memset(nodes, (char)NIL, sizeof(word_t)*SIZE2);
     nnodes = 0;
   }
 
