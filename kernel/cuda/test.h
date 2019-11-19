@@ -1,1 +1,1 @@
-int test_cuda();
+int test_cuda(int deviceID,char* header);

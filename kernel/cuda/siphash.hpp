@@ -25,7 +25,7 @@ public:
   uint64_t v3;
 
   siphash_state(const siphash_keys &sk) {
-    v0 = sk.k0; v1 = sk.k1; v2 = sk.k2; v3 = sk.k3;
+    v0 = sk.k0 ; v1 = sk.k1; v2 = sk.k2; v3 = sk.k3;
   }
   uint64_t xor_lanes() {
     return (v0 ^ v1) ^ (v2  ^ v3);
